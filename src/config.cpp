@@ -525,7 +525,11 @@ namespace config {
     },  // display_device
 
     0,  // max_bitrate
-    0  // minimum_fps_target (0 = framerate)
+    0,  // minimum_fps_target (0 = framerate)
+
+    1,  // multi_instance_count (1 = single group, backward compatible)
+    0,  // multi_instance_mode (round-robin)
+    {},  // cert_display_map
   };
 
   audio_t audio {
@@ -1199,6 +1203,10 @@ namespace config {
 
     int_f(vars, "max_bitrate", video.max_bitrate);
     double_between_f(vars, "minimum_fps_target", video.minimum_fps_target, {0.0, 1000.0});
+
+    int_f(vars, "multi_instance_count", video.multi_instance_count);
+    int_f(vars, "multi_instance_mode", video.multi_instance_mode);
+    string_f(vars, "cert_display_map", video.cert_display_map);
 
     path_f(vars, "pkey", nvhttp.pkey);
     path_f(vars, "cert", nvhttp.cert);

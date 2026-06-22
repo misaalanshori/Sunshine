@@ -13,6 +13,8 @@ extern "C" {
 #include <array>
 #include <cctype>
 #include <format>
+#include <mutex>
+#include <queue>
 #include <set>
 #include <unordered_map>
 #include <utility>
@@ -463,7 +465,14 @@ namespace rtsp_stream {
 
       auto socket = std::move(next_socket);
 
-      auto launch_session {launch_event.view(0s)};
+      std::shared_ptr<launch_session_t> launch_session;
+      {
+        std::lock_guard lock(launch_queue_mutex);
+        if (!pending_launch_sessions.empty()) {
+          launch_session = pending_launch_sessions.front();
+        }
+      }
+
       if (launch_session) {
         // Associate the current RTSP session with this socket and start reading
         socket->session = launch_session;
@@ -497,41 +506,51 @@ namespace rtsp_stream {
      * @param launch_session Streaming session information.
      */
     void session_raise(std::shared_ptr<launch_session_t> launch_session) {
-      // If a launch event is still pending, don't overwrite it.
-      if (launch_event.view(0s)) {
-        return;
+      // Enqueue the launch session (supports multiple pending sessions
+      // for multi-instance streaming where clients may launch simultaneously)
+      {
+        std::lock_guard lock(launch_queue_mutex);
+        pending_launch_sessions.push(std::move(launch_session));
+        BOOST_LOG(info) << "Launch session queued [pending: "sv
+                        << pending_launch_sessions.size() << ']';
       }
 
-      // Raise the new launch session to prepare for the RTSP handshake
-      launch_event.raise(std::move(launch_session));
-
-      // Arm the timer to expire this launch session if the client times out
+      // Arm the timer to expire the oldest launch session if the client times out
       raised_timer.expires_after(config::stream.ping_timeout);
       raised_timer.async_wait([this](const boost::system::error_code &ec) {
         if (!ec) {
-          auto discarded = launch_event.pop(0s);
-          if (discarded) {
-            BOOST_LOG(debug) << "Event timeout: "sv << discarded->unique_id;
+          std::lock_guard lock(launch_queue_mutex);
+          if (!pending_launch_sessions.empty()) {
+            auto discarded = pending_launch_sessions.front();
+            BOOST_LOG(debug) << "Launch session timed out: "sv << discarded->unique_id;
+            pending_launch_sessions.pop();
           }
         }
       });
     }
 
     /**
-     * @brief Clear state for the oldest launch session.
+     * @brief Clear state for a specific launch session.
      * @param launch_session_id The ID of the session to clear.
      */
     void session_clear(uint32_t launch_session_id) {
-      // We currently only support a single pending RTSP session,
-      // so the ID should always match the one for that session.
-      auto launch_session = launch_event.view(0s);
-      if (launch_session) {
-        if (launch_session->id != launch_session_id) {
-          BOOST_LOG(error) << "Attempted to clear unexpected session: "sv << launch_session_id << " vs "sv << launch_session->id;
+      std::lock_guard lock(launch_queue_mutex);
+      // Search the queue for the matching session
+      std::queue<std::shared_ptr<launch_session_t>> temp;
+      bool found = false;
+      while (!pending_launch_sessions.empty()) {
+        auto s = pending_launch_sessions.front();
+        pending_launch_sessions.pop();
+        if (!found && s->id == launch_session_id) {
+          found = true;
+          BOOST_LOG(debug) << "Cleared launch session: "sv << launch_session_id;
         } else {
-          raised_timer.cancel();
-          launch_event.pop();
+          temp.push(std::move(s));
         }
+      }
+      pending_launch_sessions = std::move(temp);
+      if (!found) {
+        BOOST_LOG(debug) << "Launch session not found for clearing: "sv << launch_session_id;
       }
     }
 
@@ -544,7 +563,8 @@ namespace rtsp_stream {
       return (int) _session_slots->size();
     }
 
-    safe::event_t<std::shared_ptr<launch_session_t>> launch_event;
+    std::queue<std::shared_ptr<launch_session_t>> pending_launch_sessions;
+    std::mutex launch_queue_mutex;
 
     /**
      * @brief Clear launch sessions.

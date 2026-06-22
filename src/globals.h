@@ -47,6 +47,12 @@ namespace mail {
   MAIL(broadcast_shutdown);
   MAIL(video_packets);
   MAIL(audio_packets);
+  /**
+   * Display switch event.
+   * In multi-instance mode, this event is raised on the per-group
+   * capture_group_t::mail rather than on mail::man, isolating display
+   * switching to individual capture groups.
+   */
   MAIL(switch_display);
 
   // Local mail

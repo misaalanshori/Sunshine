@@ -160,6 +160,21 @@ namespace config {
 
     int max_bitrate;  // Maximum bitrate, sets ceiling in kbps for bitrate requested from client
     double minimum_fps_target;  ///< Lowest framerate that will be used when streaming. Range 0-1000, 0 = half of client's requested framerate.
+
+    // MULTI-INSTANCE: Independent display capture per connected client
+    // 0 = auto-detect (one group per connected display), 1 = single (backward compatible, default)
+    int multi_instance_count;
+
+    /// @brief Multi-instance display capture modes
+    enum multi_instance_mode_e {
+      ROUND_ROBIN = 0,  ///< Assign each new client to the next available display group
+      CERT_MAP = 1  ///< Map clients to displays by their pairing certificate
+    };
+    int multi_instance_mode;
+
+    // Cert-to-display mapping for CERT_MAP mode.
+    // Format: comma-separated "cert_hash:display_index" pairs
+    std::string cert_display_map;
   };
 
   struct audio_t {
