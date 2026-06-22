@@ -278,6 +278,7 @@
     "max_bitrate_desc": "The maximum bitrate (in Kbps) that Sunshine will encode the stream at. If set to 0, it will always use the bitrate requested by Moonlight.",
     "minimum_fps_target": "Minimum FPS Target",
     "minimum_fps_target_desc": "The lowest effective FPS a stream can reach. A value of 0 is treated as roughly half of the stream's FPS. A setting of 20 is recommended if you stream 24 or 30fps content.",
+    "multi_instance_header": "Multi-Instance Streaming",
     "multi_instance_count": "Multi-Instance Count",
     "multi_instance_count_desc": "The number of independent display capture instances to run. Set to 0 for auto-detect (one per display), or 1 for single instance.",
     "multi_instance_mode": "Multi-Instance Mode",
