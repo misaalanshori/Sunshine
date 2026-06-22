@@ -9,6 +9,7 @@
 #include "platform/common.h"
 #include "thread_safe.h"
 #include "video_colorspace.h"
+#include "sync.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
