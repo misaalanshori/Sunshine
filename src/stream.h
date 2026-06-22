@@ -36,6 +36,9 @@ namespace stream {
     uint32_t encryptionFlagsEnabled;
 
     std::optional<int> gcmap;
+
+    // Multi-instance: which capture group this session belongs to
+    int capture_group_id = 0;
   };
 
   namespace session {

@@ -24,6 +24,9 @@ namespace input {
 
   std::shared_ptr<input_t> alloc(safe::mail_t mail);
 
+  /** Set the capture group for per-group shortcut routing (multi-instance). */
+  void set_capture_group(std::shared_ptr<input_t> &input, int group_id);
+
   struct touch_port_t: public platf::touch_port_t {
     int env_width;
     int env_height;

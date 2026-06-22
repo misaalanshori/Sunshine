@@ -96,6 +96,36 @@ const config = ref(props.config)
         :config="config"
     />
 
+    <hr class="my-4" />
+    <h5 class="mb-3">{{ $t('config.multi_instance_header') }}</h5>
+
+    <!-- Multi-Instance Count -->
+    <div class="mb-3">
+      <label for="multi_instance_count" class="form-label">{{ $t('config.multi_instance_count') }}</label>
+      <input type="number" class="form-control" id="multi_instance_count"
+             v-model="config.multi_instance_count" min="1" max="16" />
+      <div class="form-text">{{ $t('config.multi_instance_count_desc') }}</div>
+    </div>
+
+    <!-- Multi-Instance Mode -->
+    <div class="mb-3">
+      <label for="multi_instance_mode" class="form-label">{{ $t('config.multi_instance_mode') }}</label>
+      <select id="multi_instance_mode" class="form-select" v-model="config.multi_instance_mode">
+        <option value="0">{{ $t('config.multi_instance_mode_0') }}</option>
+        <option value="1">{{ $t('config.multi_instance_mode_1') }}</option>
+      </select>
+      <div class="form-text">{{ $t('config.multi_instance_mode_desc') }}</div>
+    </div>
+
+    <!-- Cert-Display Map -->
+    <div class="mb-3">
+      <label for="cert_display_map" class="form-label">{{ $t('config.cert_display_map') }}</label>
+      <input type="text" class="form-control" id="cert_display_map"
+             v-model="config.cert_display_map"
+             :placeholder="$tp('config.cert_display_map_placeholder', 'sha256:abc123=0,sha256:def456=1')" />
+      <div class="form-text">{{ $t('config.cert_display_map_desc') }}</div>
+    </div>
+
   </div>
 </template>
 

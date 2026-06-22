@@ -43,6 +43,8 @@ namespace video {
     int chromaSamplingType;  // 0 - 4:2:0, 1 - 4:4:4
 
     int enableIntraRefresh;  // 0 - disabled, 1 - enabled
+
+    int capture_group_id = 0;  // Which capture group this session is assigned to
   };
 
   platf::mem_type_e map_base_dev_type(AVHWDeviceType type);
@@ -347,6 +349,56 @@ namespace video {
   extern int active_av1_mode;
   extern bool last_encoder_probe_supported_ref_frames_invalidation;
   extern std::array<bool, 3> last_encoder_probe_supported_yuv444_for_codec;  // 0 - H.264, 1 - HEVC, 2 - AV1
+
+  /**
+   * @brief A capture group encapsulates one display, one capture thread,
+   *        and the list of sessions assigned to that display.
+   *
+   * Multiple capture groups run concurrently, each capturing from a
+   * different monitor, enabling independent multi-instance streaming.
+   */
+  struct capture_group_t {
+    int group_id;                    // 0-based group identifier
+    int display_index;               // index into platf::display_names()
+    std::string display_name;        // cached display name for reinit
+
+    std::shared_ptr<safe::queue_t<struct capture_ctx_t>> capture_ctx_queue;
+    std::thread capture_thread;
+
+    safe::signal_t reinit_event;
+    sync_util::sync_t<std::weak_ptr<platf::display_t>> display_wp;
+
+    // Per-group mail — display switch events are local to this group
+    safe::mail_t mail;
+
+    // Per-group cursor visibility
+    bool display_cursor = true;
+  };
+
+  /** Pool of capture groups. Index 0 is the default (backward compatible single-display). */
+  extern std::vector<std::unique_ptr<capture_group_t>> capture_groups;
+
+  /**
+   * @brief Initialize capture groups from configuration.
+   * @return 0 on success, -1 on failure.
+   */
+  int init_capture_groups();
+
+  /**
+   * @brief Shutdown all capture groups and release resources.
+   */
+  void shutdown_capture_groups();
+
+  /**
+   * @brief Assign a newly connected session to a capture group.
+   * @param client_cert The client's pairing certificate (used for CERT_MAP mode).
+   * @param unique_id The client's unique ID.
+   * @return The group_id the session was assigned to.
+   */
+  int assign_session_to_capture_group(
+    const std::string &client_cert,
+    const std::string &unique_id
+  );
 
   void capture(
     safe::mail_t mail,

@@ -898,6 +898,9 @@ namespace nvhttp {
 
         return;
       }
+
+      // Initialize capture groups after encoder probing (multi-instance support)
+      video::init_capture_groups();
     }
 
     auto encryption_mode = net::encryption_mode_for_address(request->remote_endpoint().address());
@@ -1003,6 +1006,9 @@ namespace nvhttp {
 
         return;
       }
+
+      // Initialize capture groups after encoder probing (multi-instance support)
+      video::init_capture_groups();
     }
 
     auto encryption_mode = net::encryption_mode_for_address(request->remote_endpoint().address());

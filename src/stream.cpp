@@ -1959,6 +1959,9 @@ namespace stream {
           display_device::revert_configuration();
         }
 
+        // Shutdown capture groups when all sessions end
+        video::shutdown_capture_groups();
+
         platf::streaming_will_stop();
       }
 
@@ -1967,6 +1970,7 @@ namespace stream {
 
     int start(session_t &session, const std::string &addr_string) {
       session.input = input::alloc(session.mail);
+      input::set_capture_group(session.input, session.config.capture_group_id);
 
       session.broadcast_ref = broadcast.ref();
       if (!session.broadcast_ref) {
@@ -2017,6 +2021,17 @@ namespace stream {
       session->client_cert = launch_session.client_cert;
 
       session->config = config;
+
+      // Assign session to a capture group for multi-instance streaming
+      session->config.capture_group_id =
+        video::assign_session_to_capture_group(
+          launch_session.client_cert,
+          launch_session.unique_id
+        );
+      session->config.monitor.capture_group_id = session->config.capture_group_id;
+
+      BOOST_LOG(info) << "Session assigned to capture group "sv
+                      << session->config.capture_group_id;
 
       session->control.connect_data = launch_session.control_connect_data;
       session->control.feedback_queue = mail->queue<platf::gamepad_feedback_msg_t>(mail::gamepad_feedback);

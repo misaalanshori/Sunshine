@@ -7,6 +7,7 @@
 #include <atomic>
 #include <bitset>
 #include <list>
+#include <sstream>
 #include <thread>
 
 // lib includes
@@ -1186,6 +1187,138 @@ namespace video {
   bool last_encoder_probe_supported_ref_frames_invalidation = false;
   std::array<bool, 3> last_encoder_probe_supported_yuv444_for_codec = {};
 
+  std::vector<std::unique_ptr<capture_group_t>> capture_groups;
+
+  int init_capture_groups() {
+    if (!chosen_encoder) {
+      BOOST_LOG(error) << "Cannot init capture groups: no encoder selected"sv;
+      return -1;
+    }
+
+    // If capture groups are already initialized, skip re-initialization.
+    // This can happen if two clients launch simultaneously while
+    // session_count() is still 0.
+    if (!capture_groups.empty()) {
+      BOOST_LOG(info) << "Capture groups already initialized ("sv
+                      << capture_groups.size() << " groups)"sv;
+      return 0;
+    }
+
+    // Determine how many groups to create
+    int group_count = config::video.multi_instance_count;
+    if (group_count <= 0) {
+      // 0 = auto: one group per available display
+      auto display_names = platf::display_names(chosen_encoder->platform_formats->dev_type);
+      group_count = (int) display_names.size();
+      if (group_count <= 0) group_count = 1;
+    }
+
+    auto display_names = platf::display_names(chosen_encoder->platform_formats->dev_type);
+    if (group_count > (int) display_names.size()) {
+      BOOST_LOG(warning) << "Requested "sv << group_count
+                         << " capture groups but only "sv << display_names.size()
+                         << " displays available; clamping"sv;
+      group_count = (int) display_names.size();
+    }
+
+    BOOST_LOG(info) << "Initializing "sv << group_count << " capture group(s)"sv;
+
+    for (int i = 0; i < group_count; i++) {
+      auto group = std::make_unique<capture_group_t>();
+      group->group_id = i;
+      group->display_index = i;
+      group->display_name = display_names[i];
+      group->capture_ctx_queue =
+        std::make_shared<safe::queue_t<capture_ctx_t>>(30);
+      group->mail = std::make_shared<safe::mail_raw_t>();
+      group->display_cursor = true;
+
+      // Start the capture thread for this group
+      group->capture_thread = std::thread {
+        captureThread,
+        std::ref(group->capture_ctx_queue),
+        std::ref(group->display_wp),
+        std::ref(group->reinit_event),
+        std::ref(*chosen_encoder),
+        i,                     // display_index for this group
+        group->mail,           // per-group mail
+        std::ref(group->display_cursor)  // per-group cursor visibility
+      };
+
+      capture_groups.push_back(std::move(group));
+    }
+
+    return 0;
+  }
+
+  void shutdown_capture_groups() {
+    BOOST_LOG(info) << "Shutting down capture groups..."sv;
+    for (auto &group : capture_groups) {
+      if (group->capture_ctx_queue) {
+        group->capture_ctx_queue->stop();
+      }
+      if (group->capture_thread.joinable()) {
+        group->capture_thread.join();
+      }
+    }
+    capture_groups.clear();
+  }
+
+  int assign_session_to_capture_group(
+    const std::string &client_cert,
+    const std::string &unique_id
+  ) {
+    if (capture_groups.empty()) {
+      BOOST_LOG(error) << "No capture groups available"sv;
+      return 0;
+    }
+
+    switch (config::video.multi_instance_mode) {
+      case config::video_t::ROUND_ROBIN: {
+        // Assign each new session to the next display in rotation
+        static std::atomic<int> next_group{0};
+        int group = next_group.fetch_add(1) % (int) capture_groups.size();
+        BOOST_LOG(info) << "Assigning session ["sv << unique_id
+                        << "] to display group "sv << group << " (round-robin)"sv;
+        return group;
+      }
+
+      case config::video_t::CERT_MAP: {
+        // Parse cert_display_map to find matching cert
+        if (!config::video.cert_display_map.empty() && !client_cert.empty()) {
+          // Format: "cert_hash:0,cert_hash:1"
+          std::stringstream ss(config::video.cert_display_map);
+          std::string mapping;
+          while (std::getline(ss, mapping, ',')) {
+            auto colon_pos = mapping.find(':');
+            if (colon_pos != std::string::npos) {
+              auto cert = mapping.substr(0, colon_pos);
+              auto idx_str = mapping.substr(colon_pos + 1);
+              if (cert == client_cert) {
+                int idx = std::stoi(idx_str);
+                if (idx >= 0 && idx < (int) capture_groups.size()) {
+                  BOOST_LOG(info) << "Assigning session ["sv << unique_id
+                                  << "] to display group "sv << idx << " (cert-map)"sv;
+                  return idx;
+                }
+              }
+            }
+          }
+        }
+        // Fallback to round-robin if no cert match
+        static std::atomic<int> next_group{0};
+        int group = next_group.fetch_add(1) % (int) capture_groups.size();
+        BOOST_LOG(info) << "Assigning session ["sv << unique_id
+                        << "] to display group "sv << group << " (cert-map fallback)"sv;
+        return group;
+      }
+
+      default:
+        BOOST_LOG(warning) << "Unknown multi_instance_mode: "sv << config::video.multi_instance_mode;
+        return 0;
+    }
+  }
+
   void reset_display(std::shared_ptr<platf::display_t> &disp, const platf::mem_type_e &type, const std::string &display_name, const config_t &config) {
     // We try this twice, in case we still get an error on reinitialization
     for (int x = 0; x < 2; ++x) {
@@ -1258,7 +1391,10 @@ namespace video {
     std::shared_ptr<safe::queue_t<capture_ctx_t>> capture_ctx_queue,
     sync_util::sync_t<std::weak_ptr<platf::display_t>> &display_wp,
     safe::signal_t &reinit_event,
-    const encoder_t &encoder
+    const encoder_t &encoder,
+    int group_display_index,
+    safe::mail_t group_mail,
+    bool &display_cursor
   ) {
     std::vector<capture_ctx_t> capture_ctxs;
 
@@ -1274,7 +1410,10 @@ namespace video {
       }
     });
 
-    auto switch_display_event = mail::man->event<int>(mail::switch_display);
+    // Use per-group mail for display switch events if provided, otherwise fall back to global
+    auto switch_display_event = group_mail
+      ? group_mail->event<int>(mail::switch_display)
+      : mail::man->event<int>(mail::switch_display);
 
     // Wait for the initial capture context or a request to stop the queue
     auto initial_capture_ctx = capture_ctx_queue->pop();
@@ -1286,9 +1425,9 @@ namespace video {
     // Get all the monitor names now, rather than at boot, to
     // get the most up-to-date list available monitors
     std::vector<std::string> display_names;
-    int display_p = -1;
+    int display_p = group_display_index;
     refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
-    auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
+    auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], config::video);
     if (!disp) {
       return;
     }
@@ -2467,14 +2606,29 @@ namespace video {
       shutdown_event->raise(true);
     });
 
-    auto ref = capture_thread_async.ref();
-    if (!ref) {
+    // Find the capture group for this session
+    int group_id = config.capture_group_id;
+    if (group_id < 0 || group_id >= (int) capture_groups.size()) {
+      BOOST_LOG(warning) << "Invalid capture group "sv << group_id
+                         << ", falling back to group 0"sv;
+      group_id = 0;
+    }
+
+    if (capture_groups.empty()) {
+      BOOST_LOG(error) << "No capture groups available"sv;
       return;
     }
 
-    ref->capture_ctx_queue->raise(capture_ctx_t {images, config});
+    auto &group = capture_groups[group_id];
 
-    if (!ref->capture_ctx_queue->running()) {
+    if (!group->capture_ctx_queue) {
+      BOOST_LOG(error) << "Capture group "sv << group_id << " has no queue"sv;
+      return;
+    }
+
+    group->capture_ctx_queue->raise(capture_ctx_t {images, config});
+
+    if (!group->capture_ctx_queue->running()) {
       return;
     }
 
@@ -2488,19 +2642,19 @@ namespace video {
 
     while (!shutdown_event->peek() && images->running()) {
       // Wait for the main capture event when the display is being reinitialized
-      if (ref->reinit_event.peek()) {
+      if (group->reinit_event.peek()) {
         std::this_thread::sleep_for(20ms);
         continue;
       }
       // Wait for the display to be ready
       std::shared_ptr<platf::display_t> display;
       {
-        auto lg = ref->display_wp.lock();
-        if (ref->display_wp->expired()) {
+        auto lg = group->display_wp.lock();
+        if (group->display_wp->expired()) {
           continue;
         }
 
-        display = ref->display_wp->lock();
+        display = group->display_wp->lock();
       }
 
       auto &encoder = *chosen_encoder;
@@ -2531,8 +2685,8 @@ namespace video {
         config,
         display,
         std::move(encode_device),
-        ref->reinit_event,
-        *ref->encoder_p,
+        group->reinit_event,
+        *chosen_encoder,
         channel_data
       );
     }
@@ -2549,6 +2703,14 @@ namespace video {
     if (chosen_encoder->flags & PARALLEL_ENCODING) {
       capture_async(std::move(mail), config, channel_data);
     } else {
+      // Sync encoding path: multi-instance is not fully supported here.
+      // All sync sessions use group 0 (the default). This is acceptable because
+      // modern hardware encoders (NVENC, VAAPI, VideoToolbox) all use PARALLEL_ENCODING.
+      if (config.capture_group_id > 0) {
+        BOOST_LOG(warning) << "Multi-instance capture group "sv << config.capture_group_id
+                           << " requested but encoder does not support PARALLEL_ENCODING; "
+                              "all sync sessions will share group 0 display"sv;
+      }
       safe::signal_t join_event;
       auto ref = capture_thread_sync.ref();
       ref->encode_session_ctx_queue.raise(sync_session_ctx_t {
@@ -3207,7 +3369,10 @@ namespace video {
       capture_thread_ctx.capture_ctx_queue,
       std::ref(capture_thread_ctx.display_wp),
       std::ref(capture_thread_ctx.reinit_event),
-      std::ref(*capture_thread_ctx.encoder_p)
+      std::ref(*capture_thread_ctx.encoder_p),
+      0,              // group_display_index (default for backward compat)
+      nullptr,        // group_mail (null = use global mail::man)
+      std::ref(display_cursor)  // global display_cursor
     };
 
     return 0;

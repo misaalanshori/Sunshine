@@ -27,6 +27,7 @@ extern "C" {
 #include "platform/common.h"
 #include "thread_pool.h"
 #include "utility.h"
+#include "video.h"
 
 // Win32 WHEEL_DELTA constant
 #ifndef WHEEL_DELTA
@@ -193,28 +194,47 @@ namespace input {
 
     int32_t accumulated_vscroll_delta;
     int32_t accumulated_hscroll_delta;
+
+    // Multi-instance: which capture group this input belongs to
+    int capture_group_id = 0;
   };
 
   /**
    * @brief Apply shortcut based on VKEY
+   * @param input The input instance (for per-group routing).
    * @param keyCode The VKEY code
    * @return 0 if no shortcut applied, > 0 if shortcut applied.
    */
-  inline int apply_shortcut(short keyCode) {
+  inline int apply_shortcut(std::shared_ptr<input_t> &input, short keyCode) {
     constexpr auto VK_F1 = 0x70;
     constexpr auto VK_F13 = 0x7C;
 
     BOOST_LOG(debug) << "Apply Shortcut: 0x"sv << util::hex((std::uint8_t) keyCode).to_string_view();
 
     if (keyCode >= VK_F1 && keyCode <= VK_F13) {
-      mail::man->event<int>(mail::switch_display)->raise(keyCode - VK_F1);
+      // Route display switch to the session's capture group (per-group isolation)
+      int group_id = input->capture_group_id;
+      if (group_id >= 0 && group_id < (int) video::capture_groups.size()) {
+        video::capture_groups[group_id]->mail->event<int>(mail::switch_display)->raise(keyCode - VK_F1);
+      } else {
+        // Fallback to global for backward compat
+        mail::man->event<int>(mail::switch_display)->raise(keyCode - VK_F1);
+      }
       return 1;
     }
 
     switch (keyCode) {
-      case 0x4E /* VKEY_N */:
-        display_cursor = !display_cursor;
+      case 0x4E /* VKEY_N */: {
+        // Toggle cursor for the session's capture group
+        int group_id = input->capture_group_id;
+        if (group_id >= 0 && group_id < (int) video::capture_groups.size()) {
+          video::capture_groups[group_id]->display_cursor =
+            !video::capture_groups[group_id]->display_cursor;
+        } else {
+          display_cursor = !display_cursor;
+        }
         return 1;
+      }
     }
 
     return 0;
@@ -780,7 +800,7 @@ namespace input {
       if (!release) {
         // A new key has been pressed down, we need to check for key combo's
         // If a key-combo has been pressed down, don't pass it through
-        if (input->shortcutFlags == input_t::SHORTCUT && apply_shortcut(keyCode) > 0) {
+        if (input->shortcutFlags == input_t::SHORTCUT && apply_shortcut(input, keyCode) > 0) {
           return;
         }
 
@@ -1695,5 +1715,9 @@ namespace input {
                           100ms);
 
     return input;
+  }
+
+  void set_capture_group(std::shared_ptr<input_t> &input, int group_id) {
+    input->capture_group_id = group_id;
   }
 }  // namespace input
