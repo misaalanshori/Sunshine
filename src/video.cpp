@@ -1189,6 +1189,16 @@ namespace video {
 
   std::vector<std::unique_ptr<capture_group_t>> capture_groups;
 
+  void captureThread(
+    std::shared_ptr<safe::queue_t<capture_ctx_t>> capture_ctx_queue,
+    sync_util::sync_t<std::weak_ptr<platf::display_t>> &display_wp,
+    safe::signal_t &reinit_event,
+    const encoder_t &encoder,
+    int group_display_index,
+    safe::mail_t group_mail,
+    bool &display_cursor
+  );
+
   int init_capture_groups() {
     if (!chosen_encoder) {
       BOOST_LOG(error) << "Cannot init capture groups: no encoder selected"sv;
@@ -1427,7 +1437,7 @@ namespace video {
     std::vector<std::string> display_names;
     int display_p = group_display_index;
     refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
-    auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], config::video);
+    auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
     if (!disp) {
       return;
     }
