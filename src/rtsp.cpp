@@ -470,8 +470,6 @@ namespace rtsp_stream {
         std::lock_guard lock(launch_queue_mutex);
         if (!pending_launch_sessions.empty()) {
           launch_session = pending_launch_sessions.front();
-          pending_launch_sessions.pop();
-          raised_timer.cancel();
         }
       }
 
