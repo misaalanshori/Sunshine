@@ -1636,7 +1636,8 @@ namespace video {
               }
 
               // reset_display() will sleep between retries
-              reset_display(disp, encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
+              config_t fallback_config = capture_ctxs.empty() ? config::video : capture_ctxs.front().config;
+              reset_display(disp, encoder.platform_formats->dev_type, display_names[display_p], fallback_config);
               if (disp) {
                 break;
               }
