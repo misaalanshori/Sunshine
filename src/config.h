@@ -165,9 +165,10 @@ namespace config {
     // 0 = auto-detect (one group per connected display), 1 = single (backward compatible, default)
     int multi_instance_count;
 
+    /// @brief Multi-instance display capture modes
     enum multi_instance_mode_e {
-      ROUND_ROBIN = 0,  // Assign each new client to the next available display group
-      CERT_MAP = 1      // Map clients to displays by their pairing certificate
+      ROUND_ROBIN = 0,  ///< Assign each new client to the next available display group
+      CERT_MAP = 1  ///< Map clients to displays by their pairing certificate
     };
     int multi_instance_mode;
 

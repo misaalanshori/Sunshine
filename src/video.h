@@ -45,7 +45,7 @@ namespace video {
 
     int enableIntraRefresh;  // 0 - disabled, 1 - enabled
 
-    int capture_group_id = 0;  // Which capture group this session is assigned to
+    int capture_group_id = 0;  ///< Which capture group this session is assigned to
   };
 
   platf::mem_type_e map_base_dev_type(AVHWDeviceType type);
@@ -359,21 +359,19 @@ namespace video {
    * different monitor, enabling independent multi-instance streaming.
    */
   struct capture_group_t {
-    int group_id;                    // 0-based group identifier
-    int display_index;               // index into platf::display_names()
-    std::string display_name;        // cached display name for reinit
+    int group_id;  ///< 0-based group identifier
+    int display_index;  ///< Index into platf::display_names()
+    std::string display_name;  ///< Cached display name for reinit
 
-    std::shared_ptr<safe::queue_t<struct capture_ctx_t>> capture_ctx_queue;
-    std::thread capture_thread;
+    std::shared_ptr<safe::queue_t<struct capture_ctx_t>> capture_ctx_queue;  ///< Queue for capture contexts
+    std::thread capture_thread;  ///< Capture thread for this group
 
-    safe::signal_t reinit_event;
-    sync_util::sync_t<std::weak_ptr<platf::display_t>> display_wp;
+    safe::signal_t reinit_event;  ///< Event to signal reinitialization
+    sync_util::sync_t<std::weak_ptr<platf::display_t>> display_wp;  ///< Display weak pointer for this group
 
-    // Per-group mail — display switch events are local to this group
-    safe::mail_t mail;
+    safe::mail_t mail;  ///< Per-group mail — display switch events are local to this group
 
-    // Per-group cursor visibility
-    bool display_cursor = true;
+    bool display_cursor = true;  ///< Per-group cursor visibility
   };
 
   /** Pool of capture groups. Index 0 is the default (backward compatible single-display). */
