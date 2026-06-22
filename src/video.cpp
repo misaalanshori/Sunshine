@@ -9,6 +9,8 @@
 #include <list>
 #include <sstream>
 #include <thread>
+#include <cmath>
+#include <limits>
 
 // lib includes
 #include <boost/pointer_cast.hpp>

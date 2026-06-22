@@ -1445,6 +1445,77 @@ editing the `conf` file in a text editor. Use the examples as reference.
     </tr>
 </table>
 
+### multi_instance_count
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            The number of independent display capture instances to run. This allows multiple clients to stream different displays simultaneously.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            1
+            @endcode</td>
+    </tr>
+    <tr>
+        <td rowspan="3">Choices</td>
+        <td>0</td>
+        <td>auto-detect (one group per connected display)</td>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td>single instance (backward compatible)</td>
+    </tr>
+    <tr>
+        <td>2+</td>
+        <td>Specify the number of instances</td>
+    </tr>
+</table>
+
+### multi_instance_mode
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            The strategy used to assign connecting clients to capture groups.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            0
+            @endcode</td>
+    </tr>
+    <tr>
+        <td rowspan="2">Choices</td>
+        <td>0</td>
+        <td>Round-robin (assign each new client to the next available display group)</td>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td>Certificate mapping (map clients to displays by their pairing certificate using cert_display_map)</td>
+    </tr>
+</table>
+
+### cert_display_map
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Cert-to-display mapping for CERT_MAP multi-instance mode. Format: comma-separated "cert_pem:display_index" pairs.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">n/a</td>
+    </tr>
+</table>
+
 ## Network
 
 ### upnp

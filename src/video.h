@@ -10,6 +10,7 @@
 #include "thread_safe.h"
 #include "video_colorspace.h"
 #include "sync.h"
+#include <bitset>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
